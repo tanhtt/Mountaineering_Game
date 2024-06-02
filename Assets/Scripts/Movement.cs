@@ -6,6 +6,10 @@ using DG.Tweening;
 
 public class Movement : MonoBehaviour
 {
+    #region Variables
+    [Tooltip("The Input Manager component used to gather player input.")]
+    public InputManager inputManager = null;
+
     private Collision coll;
     [HideInInspector]
     public Rigidbody2D rb;
@@ -13,10 +17,15 @@ public class Movement : MonoBehaviour
 
     [Space]
     [Header("Stats")]
+    [Tooltip("Player walk speed")]
     public float speed = 10;
+    [Tooltip("Player jump force")]
     public float jumpForce = 50;
+    [Tooltip("The player's sliding speed when clinging to the wall")]
     public float slideSpeed = 5;
+    [Tooltip("Smooth speed when jumping off walls")]
     public float wallJumpLerp = 10;
+    [Tooltip("Player dash speed")]
     public float dashSpeed = 20;
 
     [Space]
@@ -28,18 +37,57 @@ public class Movement : MonoBehaviour
     public bool isDashing;
 
     [Space]
-
+    [Tooltip("Check if the player has just touched the ground")]
     private bool groundTouch;
+    [Tooltip("Check if the player has just dashed yet")]
     private bool hasDashed;
-
+    [Tooltip("Player direction (1 == right, -1 == left)")]
     public int side = 1;
 
     [Space]
-    [Header("Polish")]
+    [Header("Polish (Particle System)")]
     public ParticleSystem dashParticle;
     public ParticleSystem jumpParticle;
     public ParticleSystem wallJumpParticle;
     public ParticleSystem slideParticle;
+    #endregion
+
+    #region Input from Input Manager
+    // The horizontal movement input collected from the input manager
+    public float horizontalMovementInput
+    {
+        get
+        {
+            if (inputManager != null)
+                return inputManager.horizontalMovement;
+            else
+                return 0;
+        }
+    }
+    // The vertical movement input collected from the input manager
+    public float verticalMovementInput
+    {
+        get
+        {
+            if (inputManager != null)
+                return inputManager.verticalMovement;
+            else
+                return 0;
+        }
+    }
+    // the jump input collected from the input manager
+    public bool jumpInput
+    {
+        get
+        {
+            if (inputManager != null)
+                return inputManager.jumpStarted;
+            else
+                return false;
+        }
+    }
+
+    #endregion
 
     // Start is called before the first frame update
     void Start()
@@ -47,19 +95,28 @@ public class Movement : MonoBehaviour
         coll = GetComponent<Collision>();
         rb = GetComponent<Rigidbody2D>();
         anim = GetComponentInChildren<AnimationScript>();
+        this.SetUpInputManager();
+    }
+
+    private void SetUpInputManager()
+    {
+        inputManager = InputManager.instance;
+        if (inputManager == null)
+        {
+            Debug.LogError("There is no InputManager set up in the scene for the PlayerController to read from");
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
-        float x = Input.GetAxis("Horizontal");
-        float y = Input.GetAxis("Vertical");
-        float xRaw = Input.GetAxisRaw("Horizontal");
-        float yRaw = Input.GetAxisRaw("Vertical");
-        Vector2 dir = new Vector2(x, y);
+        //float x = Input.GetAxis("Horizontal");
+        //float y = Input.GetAxis("Vertical");
+        //float xRaw = Input.GetAxisRaw("Horizontal");
+        //float yRaw = Input.GetAxisRaw("Vertical");
 
-        Walk(dir);
-        anim.SetHorizontalMovement(x, y, rb.velocity.y);
+        Walk(new Vector2(horizontalMovementInput, verticalMovementInput));
+        anim.SetHorizontalMovement(horizontalMovementInput, verticalMovementInput, rb.velocity.y);
 
         if (coll.onWall && Input.GetButton("Fire3") && canMove)
         {
@@ -84,12 +141,12 @@ public class Movement : MonoBehaviour
         if (wallGrab && !isDashing)
         {
             rb.gravityScale = 0;
-            if(x > .2f || x < -.2f)
+            if(horizontalMovementInput > .2f || horizontalMovementInput < -.2f)
             rb.velocity = new Vector2(rb.velocity.x, 0);
 
-            float speedModifier = y > 0 ? .5f : 1;
+            float speedModifier = verticalMovementInput > 0 ? .5f : 1;
 
-            rb.velocity = new Vector2(rb.velocity.x, y * (speed * speedModifier));
+            rb.velocity = new Vector2(rb.velocity.x, verticalMovementInput * (speed * speedModifier));
         }
         else
         {
@@ -98,7 +155,7 @@ public class Movement : MonoBehaviour
 
         if(coll.onWall && !coll.onGround)
         {
-            if (x != 0 && !wallGrab)
+            if (horizontalMovementInput != 0 && !wallGrab)
             {
                 wallSlide = true;
                 WallSlide();
@@ -120,8 +177,8 @@ public class Movement : MonoBehaviour
 
         if (Input.GetButtonDown("Fire1") && !hasDashed)
         {
-            if(xRaw != 0 || yRaw != 0)
-                Dash(xRaw, yRaw);
+            if(horizontalMovementInput != 0 || verticalMovementInput != 0)
+                Dash(horizontalMovementInput, verticalMovementInput);
         }
 
         if (coll.onGround && !groundTouch)
@@ -135,17 +192,17 @@ public class Movement : MonoBehaviour
             groundTouch = false;
         }
 
-        WallParticle(y);
+        WallParticle(verticalMovementInput);
 
         if (wallGrab || wallSlide || !canMove)
             return;
 
-        if(x > 0)
+        if(horizontalMovementInput > 0)
         {
             side = 1;
             anim.Flip(side);
         }
-        if (x < 0)
+        if (horizontalMovementInput < 0)
         {
             side = -1;
             anim.Flip(side);
@@ -175,7 +232,7 @@ public class Movement : MonoBehaviour
         anim.SetTrigger("dash");
 
         rb.velocity = Vector2.zero;
-        Vector2 dir = new Vector2(x, y);
+        Vector2 dir = new Vector2(x, y).normalized;
 
         rb.velocity += dir.normalized * dashSpeed;
         StartCoroutine(DashWait());
